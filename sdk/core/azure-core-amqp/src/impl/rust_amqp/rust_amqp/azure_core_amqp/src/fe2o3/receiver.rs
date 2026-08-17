@@ -58,16 +58,23 @@ impl AmqpReceiverApis for Fe2o3AmqpReceiver {
         let name = options.name.unwrap_or_default();
         let credit_mode = options.credit_mode.clone().unwrap_or_default();
         let auto_accept = options.auto_accept;
-        let properties = options.properties.clone().unwrap_or_default();
+        let properties = options.properties.clone();
         let source = source.into();
 
-        let receiver = fe2o3_amqp::Receiver::builder()
+        // `name` rebuilds the fe2o3 builder with empty properties, so properties
+        // must follow it. Set them earlier and `com.microsoft:epoch` never
+        // reaches the Attach frame.
+        let mut builder = fe2o3_amqp::Receiver::builder()
             .receiver_settle_mode(fe2o3_amqp_types::definitions::ReceiverSettleMode::First)
             .source(source)
             .credit_mode(credit_mode.into())
             .auto_accept(auto_accept)
-            .properties(properties.into())
-            .name(name)
+            .name(name);
+        if let Some(properties) = properties {
+            builder = builder.properties(properties.into());
+        }
+
+        let receiver = builder
             .attach(session.implementation.get()?.lock().await.borrow_mut())
             .await
             .map_err(AmqpReceiverAttach::from)?;
@@ -225,5 +232,27 @@ impl Fe2o3AmqpReceiver {
         Self {
             receiver: OnceLock::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use fe2o3_amqp_types::definitions::Fields;
+    use fe2o3_amqp_types::primitives::{Symbol, Value};
+
+    // Guards the fe2o3 contract, not the call site. Proving a real Attach frame
+    // carries `com.microsoft:epoch` needs a broker and a live test.
+    #[test]
+    fn properties_survive_the_receiver_builder_chain() {
+        let mut properties = Fields::new();
+        properties.insert(Symbol::from("com.microsoft:epoch"), Value::Long(7));
+
+        let builder = fe2o3_amqp::Receiver::builder()
+            .receiver_settle_mode(fe2o3_amqp_types::definitions::ReceiverSettleMode::First)
+            .source("test-source")
+            .name("test-receiver")
+            .properties(properties.clone());
+
+        assert_eq!(builder.properties, Some(properties));
     }
 }

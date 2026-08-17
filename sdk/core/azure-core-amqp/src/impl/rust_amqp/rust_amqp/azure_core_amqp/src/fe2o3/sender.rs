@@ -29,6 +29,9 @@ impl AmqpSenderApis for Fe2o3AmqpSender {
         options: Option<AmqpSenderOptions>,
     ) -> Result<()> {
         let mut session_builder = fe2o3_amqp::Sender::builder();
+        // Held back until after `name` and `target`, because each of those
+        // rebuilds the fe2o3 builder with empty properties.
+        let mut link_properties = None;
 
         if let Some(options) = options {
             // if let Some(link_credit) = options.link_credit {
@@ -56,15 +59,18 @@ impl AmqpSenderApis for Fe2o3AmqpSender {
                 session_builder = session_builder.set_desired_capabilities(capabilities);
             }
             if let Some(properties) = options.properties {
-                session_builder = session_builder.properties(properties.into());
+                link_properties = Some(properties.into());
             }
             if let Some(initial_delivery_count) = options.initial_delivery_count {
                 session_builder = session_builder.initial_delivery_count(initial_delivery_count);
             }
         }
-        let sender = session_builder
-            .name(name)
-            .target(target.into())
+        let mut sender_builder = session_builder.name(name).target(target.into());
+        if let Some(properties) = link_properties {
+            sender_builder = sender_builder.properties(properties);
+        }
+
+        let sender = sender_builder
             .attach(session.implementation.get()?.lock().await.borrow_mut())
             .await
             .map_err(AmqpSenderAttach::from)?;
@@ -170,5 +176,26 @@ impl Fe2o3AmqpSender {
         Self {
             sender: OnceLock::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use fe2o3_amqp_types::definitions::Fields;
+    use fe2o3_amqp_types::primitives::{Symbol, Value};
+
+    // `name` and `target` both reset properties, so the sender has two chances
+    // to lose them. Same limit as the receiver test.
+    #[test]
+    fn properties_survive_the_sender_builder_chain() {
+        let mut properties = Fields::new();
+        properties.insert(Symbol::from("com.microsoft:producer-id"), Value::Long(3));
+
+        let builder = fe2o3_amqp::Sender::builder()
+            .name("test-sender")
+            .target("test-target")
+            .properties(properties.clone());
+
+        assert_eq!(builder.properties, Some(properties));
     }
 }

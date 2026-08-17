@@ -10,6 +10,7 @@
 
 ### Bugs Fixed
 
+- The Rust AMQP backend now sends the link properties in the Attach frame. The fe2o3 link builder changes its type as you call it, and each of those calls rebuilds the builder with empty properties. The sender and the receiver both set the properties before they set the link name, so the properties never reached the wire. Event Hubs puts `com.microsoft:epoch` in those properties to claim an exclusive consumer, and the service reports no error when the property is absent, so an owner level had no effect and no caller could detect it. This change applies to the Rust transport.
 - A close that fails now leaves the object closed. `ManagementClient`, `MessageSender`, and `MessageReceiver` kept the open flag when the close threw, and the destructor then stopped the process. [[#7323]](https://github.com/Azure/azure-sdk-for-cpp/issues/7323)
 - The connection no longer returns a cached CBS token that is at or near its expiry. It authenticates the audience again instead. [[#7254]](https://github.com/Azure/azure-sdk-for-cpp/issues/7254)
 - The connection now replaces each cached CBS token before that token expires, so a client that runs for longer than one token lifetime keeps working. This refresh applies to the uAMQP transport. Without this refresh, a send that gets the `amqp:unauthorized-access` condition stops at the first attempt, because the Event Hubs producer treats that condition as not transient. [[#7254]](https://github.com/Azure/azure-sdk-for-cpp/issues/7254)
