@@ -17,6 +17,7 @@
   "features": {
     "metrics": {
       "description": "Record native OpenTelemetry metrics",
+      "supports": "!(windows & !static)",
       "dependencies": [ { "name": "opentelemetry-cpp", "default-features": false } ]
     }
   },
