@@ -30,6 +30,19 @@ namespace Azure { namespace Messaging { namespace EventHubs { namespace Test {
     };
   } // namespace
 
+  TEST(EventHubsMetricsTest, ReplacingGlobalProviderReleasesPreviousProviderWhileIdle)
+  {
+    auto previous = otel::metrics::Provider::GetMeterProvider();
+    auto provider = std::make_shared<metrics::MeterProvider>();
+    std::weak_ptr<metrics::MeterProvider> weak = provider;
+    otel::metrics::Provider::SetMeterProvider(
+        std::static_pointer_cast<otel::metrics::MeterProvider>(provider));
+    _detail::RecordLifecycleMetric("link", "attached");
+    otel::metrics::Provider::SetMeterProvider(previous);
+    provider.reset();
+    EXPECT_TRUE(weak.expired());
+  }
+
   TEST(EventHubsMetricsTest, CountsPublicSendFailuresReturnedEventsAndTerminalLifecycle)
   {
     auto previous = otel::metrics::Provider::GetMeterProvider();

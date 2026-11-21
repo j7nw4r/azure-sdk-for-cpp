@@ -16,20 +16,17 @@ namespace Azure { namespace Messaging { namespace EventHubs { namespace _detail 
 
     struct Instruments final
     {
-      otel::nostd::shared_ptr<otel::metrics::MeterProvider> Provider;
       otel::nostd::shared_ptr<otel::metrics::Meter> Meter;
       otel::nostd::unique_ptr<otel::metrics::Counter<std::uint64_t>> Operations;
       otel::nostd::unique_ptr<otel::metrics::Counter<std::uint64_t>> Events;
       otel::nostd::unique_ptr<otel::metrics::Histogram<double>> Duration;
       otel::nostd::unique_ptr<otel::metrics::Counter<std::uint64_t>> Lifecycle;
 
-      explicit Instruments(otel::nostd::shared_ptr<otel::metrics::MeterProvider> provider)
-          : Provider(std::move(provider)),
-            Meter(Provider->GetMeter("azure-messaging-eventhubs-cpp", PackageVersion::ToString())),
-            Operations(Meter->CreateUInt64Counter(
-                "az.eventhubs.operations",
-                "Completed logical send and receive operations",
-                "{operation}")),
+      explicit Instruments(otel::nostd::shared_ptr<otel::metrics::Meter> meter)
+          : Meter(std::move(meter)), Operations(Meter->CreateUInt64Counter(
+                                         "az.eventhubs.operations",
+                                         "Completed logical send and receive operations",
+                                         "{operation}")),
             Events(Meter->CreateUInt64Counter(
                 "az.eventhubs.events",
                 "Events in accepted sends and returned receives",
@@ -50,15 +47,17 @@ namespace Azure { namespace Messaging { namespace EventHubs { namespace _detail 
     {
       static std::mutex mutex;
       static std::shared_ptr<Instruments> cached;
-      std::lock_guard<std::mutex> guard(mutex);
       auto provider = otel::metrics::Provider::GetMeterProvider();
       if (!provider)
       {
         return {};
       }
-      if (!cached || provider.get() != cached->Provider.get())
+      // Keep the instruments and their meter without extending the lifetime of the provider.
+      auto meter = provider->GetMeter("azure-messaging-eventhubs-cpp", PackageVersion::ToString());
+      std::lock_guard<std::mutex> guard(mutex);
+      if (!cached || meter != cached->Meter)
       {
-        cached = std::make_shared<Instruments>(std::move(provider));
+        cached = std::make_shared<Instruments>(std::move(meter));
       }
       return cached;
     }
