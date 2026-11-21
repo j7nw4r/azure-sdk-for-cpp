@@ -211,6 +211,15 @@ jobs:
             ServiceDirectory: ${{ parameters.ServiceDirectory }}
             TestPipeline: ${{ parameters.TestPipeline }}
 
+      - ${{ if eq(parameters.ServiceDirectory, 'eventhubs') }}:
+        - pwsh: |
+            Write-Host "##vso[task.setvariable variable=CmakeArgs]$(CmakeArgs) -DAZURE_EVENTHUBS_ENABLE_METRICS=ON"
+          displayName: Enable native Event Hubs metrics for supported debug tests
+          condition: >-
+            and(succeeded(), contains(variables['CmakeArgs'], 'BUILD_TESTING=ON'),
+                or(and(eq(variables['VCPKG_DEFAULT_TRIPLET'], 'x64-linux'), eq(variables['CMAKE_BUILD_TYPE'], 'Debug')),
+                   and(eq(variables['VCPKG_DEFAULT_TRIPLET'], 'x64-windows-static'), contains(variables['BuildArgs'], '--config Debug'))))
+
       - template: /eng/pipelines/templates/steps/cmake-build.yml
         parameters:
           ServiceDirectory: ${{ parameters.ServiceDirectory }}
