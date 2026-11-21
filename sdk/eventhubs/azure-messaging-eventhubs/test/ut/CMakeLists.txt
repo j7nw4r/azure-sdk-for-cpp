@@ -42,6 +42,12 @@ add_executable (
     test_checkpoint_store.hpp
 )
 
+if(AZURE_EVENTHUBS_ENABLE_METRICS)
+  target_sources(azure-messaging-eventhubs-test PRIVATE eventhubs_metrics_test.cpp)
+  target_compile_definitions(azure-messaging-eventhubs-test PRIVATE AZURE_EVENTHUBS_ENABLE_METRICS)
+  target_link_libraries(azure-messaging-eventhubs-test PRIVATE opentelemetry-cpp::metrics)
+endif()
+
 target_compile_definitions(azure-messaging-eventhubs-test PRIVATE _azure_BUILDING_TESTS)
 
 create_per_service_target_build(eventhubs azure-messaging-eventhubs-test)

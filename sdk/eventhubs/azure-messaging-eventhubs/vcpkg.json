@@ -3,10 +3,17 @@
   "version-string": "1.0.0",
   "dependencies": [
     "azure-core-cpp",
-    "azure-core-amqp-cpp",
-    {
-      "name": "opentelemetry-cpp",
-      "features": [ "otlp-http" ]
+    "azure-core-amqp-cpp"
+  ],
+  "features": {
+    "otlp-exporters": {
+      "description": "Build stress tests or samples that export telemetry over OTLP/HTTP",
+      "dependencies": [ { "name": "opentelemetry-cpp", "features": [ "otlp-http" ] } ]
+    },
+    "metrics": {
+      "description": "Record native OpenTelemetry metrics",
+      "supports": "!(windows & !static)",
+      "dependencies": [ { "name": "opentelemetry-cpp", "default-features": false } ]
     }
-  ]
+  }
 }

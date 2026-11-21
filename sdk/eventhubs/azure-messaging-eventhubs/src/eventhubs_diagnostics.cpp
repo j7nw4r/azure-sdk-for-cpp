@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "private/eventhubs_diagnostics.hpp"
+#include "private/eventhubs_metrics.hpp"
 
 #include <azure/core/internal/diagnostics/log.hpp>
 #include <azure/core/uuid.hpp>
@@ -133,6 +134,7 @@ namespace Azure { namespace Messaging { namespace EventHubs { namespace _detail 
       std::string const& eventName,
       std::string const& detail)
   {
+    RecordLifecycleMetric(diagnosticsContext.ComponentType, eventName);
     Azure::Core::Diagnostics::_internal::Log::Write(
         level, FormatAmqpLifecycleEvent(diagnosticsContext, eventName, detail));
   }

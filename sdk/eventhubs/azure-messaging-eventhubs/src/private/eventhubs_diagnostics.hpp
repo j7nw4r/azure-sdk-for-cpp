@@ -82,24 +82,24 @@ namespace Azure { namespace Messaging { namespace EventHubs { namespace _detail 
           ex.what());
     }
     // Consume an ID for every replacement attempt, including unsuccessful attachments.
-    diagnosticsContext.ComponentGeneration = ++nextReceiverGeneration;
-    log(Azure::Core::Diagnostics::Logger::Level::Informational,
-        diagnosticsContext,
-        "reattaching",
-        {});
+    auto replacement = diagnosticsContext;
+    replacement.ComponentGeneration = ++nextReceiverGeneration;
+    log(Azure::Core::Diagnostics::Logger::Level::Informational, replacement, "reattaching", {});
     try
     {
-      attach(diagnosticsContext);
+      attach(replacement);
+      // Only a successful replacement retires the previously installed receiver.
       log(Azure::Core::Diagnostics::Logger::Level::Informational,
           diagnosticsContext,
-          "reattached",
+          "discarded",
           {});
-      return diagnosticsContext.ComponentGeneration;
+      log(Azure::Core::Diagnostics::Logger::Level::Informational, replacement, "reattached", {});
+      return replacement.ComponentGeneration;
     }
     catch (std::exception const& ex)
     {
       log(Azure::Core::Diagnostics::Logger::Level::Warning,
-          diagnosticsContext,
+          replacement,
           "reattach_failed",
           ex.what());
       throw;

@@ -3,11 +3,25 @@
 
 # setting CMAKE_TOOLCHAIN_FILE must happen before creating the project
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake-modules")
+option(AZURE_EVENTHUBS_ENABLE_METRICS "Enable native OpenTelemetry metrics" OFF)
+if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  if(AZURE_EVENTHUBS_ENABLE_METRICS)
+    list(APPEND VCPKG_MANIFEST_FEATURES metrics)
+  endif()
+  if((BUILD_TESTING AND NOT DISABLE_AZURE_CORE_OPENTELEMETRY)
+      OR (BUILD_SAMPLES AND AZURE_EVENTHUBS_BUILD_OPENTELEMETRY_SAMPLE))
+    list(APPEND VCPKG_MANIFEST_FEATURES otlp-exporters)
+  endif()
+endif()
 include(AzureVcpkg)
 az_vcpkg_integrate()
 
 cmake_minimum_required (VERSION 3.13)
 project(azure-messaging-eventhubs LANGUAGES CXX)
+
+if(WIN32 AND BUILD_SHARED_LIBS AND AZURE_EVENTHUBS_ENABLE_METRICS)
+  message(FATAL_ERROR "Event Hubs metrics require a static Event Hubs library on Windows so the application and SDK share the OpenTelemetry meter provider.")
+endif()
 
 # Compile Options
 option(FETCH_SOURCE_DEPS "build source dependencies" OFF)
@@ -114,6 +128,13 @@ target_include_directories(
 )
 
 target_link_libraries(azure-messaging-eventhubs PUBLIC Azure::azure-core Azure::azure-core-amqp)
+
+if(AZURE_EVENTHUBS_ENABLE_METRICS)
+  find_package(opentelemetry-cpp CONFIG REQUIRED)
+  target_sources(azure-messaging-eventhubs PRIVATE src/eventhubs_metrics.cpp)
+  target_compile_definitions(azure-messaging-eventhubs PRIVATE AZURE_EVENTHUBS_ENABLE_METRICS)
+  target_link_libraries(azure-messaging-eventhubs PRIVATE opentelemetry-cpp::api)
+endif()
 
 target_compile_definitions(azure-messaging-eventhubs PRIVATE _azure_BUILDING_SDK)
 

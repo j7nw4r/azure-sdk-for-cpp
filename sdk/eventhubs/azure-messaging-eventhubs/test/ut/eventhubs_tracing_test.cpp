@@ -146,6 +146,31 @@ namespace Azure { namespace Messaging { namespace EventHubs { namespace Test {
     EXPECT_EQ(Azure::Core::Tracing::_internal::SpanStatus::Error, span->GetStatuses().back());
   }
 
+  TEST(EventHubsTracingTest, CancelledSendSkipsBatchPreparation)
+  {
+    auto provider = std::make_shared<TestTracingProvider>();
+    ProducerClientOptions options;
+    options.TracingProvider = provider;
+    ProducerClient client{
+        "Endpoint=sb://localhost/;SharedAccessKeyName=name;SharedAccessKey=key",
+        TestEventHubName,
+        options};
+    Azure::Core::Context cancelled;
+    cancelled.Cancel();
+    Models::EventData event{"example"};
+
+    EXPECT_THROW(client.Send(event, cancelled), Azure::Core::OperationCancelledException);
+    EXPECT_THROW(
+        client.Send(std::vector<Models::EventData>{event}, cancelled),
+        Azure::Core::OperationCancelledException);
+    auto const& spans = provider->GetTracers().front()->GetSpans();
+    ASSERT_EQ(2u, spans.size());
+    for (auto const& span : spans)
+    {
+      EXPECT_EQ("ProducerClient.Send", span->GetName());
+    }
+  }
+
   TEST(EventHubsTracingTest, SendSpanRecordsNonCancelException)
   {
     auto provider = std::make_shared<TestTracingProvider>();
@@ -529,7 +554,7 @@ namespace Azure { namespace Messaging { namespace EventHubs { namespace Test {
         log);
 
     EXPECT_EQ(3u, active.ComponentGeneration);
-    ASSERT_EQ(4u, instanceIds.size());
+    ASSERT_EQ(5u, instanceIds.size());
     for (auto const& instanceId : instanceIds)
     {
       EXPECT_EQ("first-receiver", instanceId);
@@ -582,7 +607,11 @@ namespace Azure { namespace Messaging { namespace EventHubs { namespace Test {
     EXPECT_EQ(8u, generation);
     EXPECT_EQ(
         (std::vector<std::pair<std::string, std::uint64_t>>{
-            {"close_failed", 7}, {"reattaching", 8}, {"attach", 8}, {"reattached", 8}}),
+            {"close_failed", 7},
+            {"reattaching", 8},
+            {"attach", 8},
+            {"discarded", 7},
+            {"reattached", 8}}),
         events);
   }
 
@@ -592,10 +621,15 @@ namespace Azure { namespace Messaging { namespace EventHubs { namespace Test {
     std::uint64_t nextGeneration = active.ComponentGeneration;
     std::vector<std::uint64_t> attemptedGenerations;
     std::vector<std::uint64_t> failedGenerations;
+    std::vector<std::uint64_t> discardedGenerations;
     auto log = [&](Azure::Core::Diagnostics::Logger::Level,
                    _detail::AmqpDiagnosticsContext const& diagnostics,
                    std::string const& eventName,
                    std::string const&) {
+      if (eventName == "discarded")
+      {
+        discardedGenerations.push_back(diagnostics.ComponentGeneration);
+      }
       if (eventName == "reattach_failed")
       {
         failedGenerations.push_back(diagnostics.ComponentGeneration);
@@ -621,6 +655,7 @@ namespace Azure { namespace Messaging { namespace EventHubs { namespace Test {
 
     EXPECT_EQ((std::vector<std::uint64_t>{2, 3, 4}), attemptedGenerations);
     EXPECT_EQ((std::vector<std::uint64_t>{2, 3}), failedGenerations);
+    EXPECT_EQ((std::vector<std::uint64_t>{1}), discardedGenerations);
     EXPECT_EQ(4u, active.ComponentGeneration);
   }
 

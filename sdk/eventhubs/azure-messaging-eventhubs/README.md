@@ -248,7 +248,7 @@ auto events = partitionClient.ReceiveEvents(1);
 
 ## Distributed tracing
 
-The `ProducerClient` and the `PartitionClient` create distributed tracing spans through the Azure Core tracing API. This package does not depend on opentelemetry-cpp. The application creates the OpenTelemetry tracer provider and links the `azure-core-tracing-opentelemetry` package.
+The `ProducerClient` and the `PartitionClient` create distributed tracing spans through the Azure Core tracing API. The default package build does not depend on opentelemetry-cpp. The application creates the OpenTelemetry tracer provider and links the `azure-core-tracing-opentelemetry` package.
 
 To get the spans, set the `TracingProvider` field on the client options. The Event Hubs options structs declare this field at the top level:
 
@@ -327,7 +327,7 @@ The instrumentation scope is `azure-messaging-eventhubs-cpp` with the package ve
 
 When the application does not set `TracingProvider`, the client creates no spans and records nothing. There is no global fallback provider.
 
-For a complete, buildable exporter setup, see the [OpenTelemetry traces and logs sample](https://github.com/Azure/azure-sdk-for-cpp/blob/main/sdk/eventhubs/azure-messaging-eventhubs/samples/opentelemetry/README.md). It configures batched OTLP/HTTP exporters, bridges Azure Logger to OpenTelemetry Logs, and includes a local collector check and a live send example. For the tracing architecture, see [Distributed Tracing in the C++ SDK][distributed_tracing].
+For a complete, buildable exporter setup, see the [OpenTelemetry sample](https://github.com/Azure/azure-sdk-for-cpp/blob/main/sdk/eventhubs/azure-messaging-eventhubs/samples/opentelemetry/README.md). It configures batched OTLP/HTTP exporters, bridges Azure Logger to OpenTelemetry Logs, and includes a local collector check and a live send example. For the tracing architecture, see [Distributed Tracing in the C++ SDK][distributed_tracing].
 
 # Troubleshooting
 
@@ -341,7 +341,18 @@ Failure records use the AMQP error-condition namespace to attribute `amqp:connec
 
 The producer gives every rebuilt connection, session, and link the same component generation. Every receiver replacement attempt gets a new link generation, including attempts that fail to attach, while keeping its owning connection and session. Each partition client has a unique receiver-instance ID that stays the same through recovery, so recreating a client for the same partition does not reuse link component IDs. Close failures retain the generation of the receiver being closed. Low-level uAMQP connection and link failure records include the same connection container ID or link name, so they can be correlated with the Event Hubs lifecycle records.
 
-This package does not emit native OpenTelemetry metrics, and Azure Core does not currently expose a provider-neutral metrics API to service libraries. Adding a metrics exporter alone does not produce SDK metrics. Applications can create their own counters and histograms or configure a backend to derive failure/recreation counters from lifecycle records and latency histograms from span durations. See the [sample metrics guidance](https://github.com/Azure/azure-sdk-for-cpp/blob/main/sdk/eventhubs/azure-messaging-eventhubs/samples/opentelemetry/README.md) for the distinction and an application-owned metrics exporter reference.
+### Native OpenTelemetry metrics
+
+Enable the `metrics` vcpkg feature or build with `-DAZURE_EVENTHUBS_ENABLE_METRICS=ON`. Set the application's global C++ OpenTelemetry meter provider before using the clients. The default Event Hubs library build has no metrics dependency. A metrics-enabled build works with the default no-op provider.
+
+| Instrument | Unit | Measurement |
+| --- | --- | --- |
+| `az.eventhubs.operations` | `{operation}` | Logical sends and receives, including failures and cancellations |
+| `az.eventhubs.events` | `{event}` | Events in accepted sends and events returned to the caller |
+| `az.eventhubs.operation.duration` | `s` | Elapsed time per logical operation, including preparation and retries |
+| `az.eventhubs.amqp.lifecycle` | `{transition}` | Completed AMQP component creation and attachment attempts and discarded components |
+
+The operation instruments include the host, Event Hub name, operation (`send` or `receive`), messaging system, and outcome (`success`, `error`, or `cancelled`). Lifecycle metrics use the component type and outcome (`success`, `error`, or `invalidated`). Retries stay within one logical operation. The application controls histogram aggregation and exporter configuration. The [OpenTelemetry sample](samples/opentelemetry/README.md) shows provider setup and shutdown.
 
 
 ## Contributing

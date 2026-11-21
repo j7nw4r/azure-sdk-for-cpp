@@ -6,6 +6,7 @@
 #include "azure/messaging/eventhubs/eventhubs_exception.hpp"
 #include "private/eventhubs_constants.hpp"
 #include "private/eventhubs_diagnostics.hpp"
+#include "private/eventhubs_metrics.hpp"
 #include "private/eventhubs_tracing.hpp"
 #include "private/eventhubs_utilities.hpp"
 #include "private/retry_operation.hpp"
@@ -410,6 +411,7 @@ namespace Azure { namespace Messaging { namespace EventHubs {
     std::vector<std::shared_ptr<const Models::ReceivedEventData>> messages;
 
     // The message count is known only when the loop ends, so the span gets it later.
+    _detail::OperationMetrics metrics{"receive", m_eventHubName, m_fullyQualifiedNamespace};
     auto tracingContext = _detail::StartSpan(
         m_tracingFactory,
         "PartitionClient.ReceiveEvents",
@@ -622,7 +624,14 @@ namespace Azure { namespace Messaging { namespace EventHubs {
           << "Receive Events. Return " << messages.size() << " messages.";
 
       _detail::SetMessageCount(m_tracingFactory, tracingContext.Span, messages.size());
+      metrics.Complete(messages.size(), messages.size() < maxMessages && context.IsCancelled());
       return messages;
+    }
+    catch (Azure::Core::OperationCancelledException const& ex)
+    {
+      metrics.Complete(0, true);
+      tracingContext.Span.AddEvent(ex);
+      throw;
     }
     catch (std::exception const& ex)
     {

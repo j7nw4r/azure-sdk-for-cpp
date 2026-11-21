@@ -50,4 +50,4 @@ The value of the `primaryConnectionString` property should be used as the `EVENT
 | produce-events/produce_events_aad.cpp | Send events using a Microsoft Entra ID credential. |
 | consume-events/consume_events.cpp | Receive events using a connection string. |
 | consume-events/consume_events_aad.cpp | Receive events using a Microsoft Entra ID credential. |
-| [opentelemetry/opentelemetry.cpp](https://github.com/Azure/azure-sdk-for-cpp/blob/main/sdk/eventhubs/azure-messaging-eventhubs/samples/opentelemetry/README.md) | Export traces and Azure SDK logs over OTLP/HTTP; includes a local collector check and a live send. |
+| [opentelemetry/opentelemetry.cpp](https://github.com/Azure/azure-sdk-for-cpp/blob/main/sdk/eventhubs/azure-messaging-eventhubs/samples/opentelemetry/README.md) | Export traces, Azure SDK logs, and optional native metrics over OTLP/HTTP; includes a local collector check and a live send. |

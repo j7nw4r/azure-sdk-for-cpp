@@ -7,6 +7,7 @@
 #include "azure/messaging/eventhubs/eventhubs_exception.hpp"
 #include "private/eventhubs_constants.hpp"
 #include "private/eventhubs_diagnostics.hpp"
+#include "private/eventhubs_metrics.hpp"
 #include "private/eventhubs_tracing.hpp"
 #include "private/eventhubs_utilities.hpp"
 #include "private/package_version.hpp"
@@ -365,6 +366,8 @@ namespace Azure { namespace Messaging { namespace EventHubs {
 
   void ProducerClient::Send(EventDataBatch const& eventDataBatch, Core::Context const& context)
   {
+    auto const eventCount = eventDataBatch.NumberOfEvents();
+    _detail::OperationMetrics metrics{"send", m_eventHub, m_fullyQualifiedNamespace};
     auto tracingContext = _detail::StartSpan(
         m_tracingFactory,
         "ProducerClient.Send",
@@ -372,12 +375,19 @@ namespace Azure { namespace Messaging { namespace EventHubs {
         "publish",
         m_eventHub,
         m_fullyQualifiedNamespace,
-        eventDataBatch.NumberOfEvents(),
+        eventCount,
         context);
 
     try
     {
       SendBatchInSpan(eventDataBatch, tracingContext);
+      metrics.Complete(eventCount);
+    }
+    catch (Azure::Core::OperationCancelledException const& ex)
+    {
+      metrics.Complete(0, true);
+      tracingContext.Span.AddEvent(ex);
+      throw;
     }
     catch (std::exception const& ex)
     {
@@ -389,6 +399,7 @@ namespace Azure { namespace Messaging { namespace EventHubs {
   void ProducerClient::Send(Models::EventData const& eventData, Core::Context const& context)
   {
     // The batch creation opens the AMQP link, so it must run inside the span.
+    _detail::OperationMetrics metrics{"send", m_eventHub, m_fullyQualifiedNamespace};
     auto tracingContext = _detail::StartSpan(
         m_tracingFactory,
         "ProducerClient.Send",
@@ -401,12 +412,20 @@ namespace Azure { namespace Messaging { namespace EventHubs {
 
     try
     {
+      tracingContext.Context.ThrowIfCancelled();
       auto batch = CreateBatch(EventDataBatchOptions{}, tracingContext.Context);
       if (!batch.TryAdd(eventData))
       {
         throw std::runtime_error("Could not add message to batch.");
       }
       SendBatchInSpan(batch, tracingContext);
+      metrics.Complete(1);
+    }
+    catch (Azure::Core::OperationCancelledException const& ex)
+    {
+      metrics.Complete(0, true);
+      tracingContext.Span.AddEvent(ex);
+      throw;
     }
     catch (std::exception const& ex)
     {
@@ -420,6 +439,7 @@ namespace Azure { namespace Messaging { namespace EventHubs {
       Core::Context const& context)
   {
     // The batch creation opens the AMQP link, so it must run inside the span.
+    _detail::OperationMetrics metrics{"send", m_eventHub, m_fullyQualifiedNamespace};
     auto tracingContext = _detail::StartSpan(
         m_tracingFactory,
         "ProducerClient.Send",
@@ -432,6 +452,7 @@ namespace Azure { namespace Messaging { namespace EventHubs {
 
     try
     {
+      tracingContext.Context.ThrowIfCancelled();
       auto batch = CreateBatch(EventDataBatchOptions{}, tracingContext.Context);
       for (const auto& data : eventData)
       {
@@ -441,6 +462,13 @@ namespace Azure { namespace Messaging { namespace EventHubs {
         }
       }
       SendBatchInSpan(batch, tracingContext);
+      metrics.Complete(eventData.size());
+    }
+    catch (Azure::Core::OperationCancelledException const& ex)
+    {
+      metrics.Complete(0, true);
+      tracingContext.Span.AddEvent(ex);
+      throw;
     }
     catch (std::exception const& ex)
     {
@@ -829,17 +857,25 @@ namespace Azure { namespace Messaging { namespace EventHubs {
           [&sender, &context]() { sender->Close(context); },
           _detail::LogAmqpLifecycle);
     }
-#if ENABLE_RUST_AMQP
     if (session)
     {
       auto const diagnosticsContext = CreateDiagnosticsContext(
           m_clientIdentifier, partitionId, "session", partitionId, stackId);
+#if ENABLE_RUST_AMQP
       _detail::CloseAmqpComponent(
           diagnosticsContext,
           failureReason.HasValue(),
           detail,
           [&session, &context]() { session->End(context); },
           _detail::LogAmqpLifecycle);
+#else
+      // uAMQP releases this component by dropping the cached handle.
+      if (failureReason.HasValue())
+      {
+        _detail::LogAmqpLifecycle(
+            Logger::Level::Informational, diagnosticsContext, "discarded", detail);
+      }
+#endif
     }
     if (connection)
     {
@@ -850,14 +886,22 @@ namespace Azure { namespace Messaging { namespace EventHubs {
           CreateConnectionName(
               m_clientIdentifier, m_producerClientOptions.ApplicationID, partitionId, stackId),
           stackId);
+#if ENABLE_RUST_AMQP
       _detail::CloseAmqpComponent(
           diagnosticsContext,
           failureReason.HasValue(),
           detail,
           [&connection, &context]() { connection->Close(context); },
           _detail::LogAmqpLifecycle);
-    }
+#else
+      // uAMQP releases this component by dropping the cached handle.
+      if (failureReason.HasValue())
+      {
+        _detail::LogAmqpLifecycle(
+            Logger::Level::Informational, diagnosticsContext, "discarded", detail);
+      }
 #endif
+    }
 
     // The properties client shares the gateway connection, so it dies with that connection.
     if (partitionId.empty())

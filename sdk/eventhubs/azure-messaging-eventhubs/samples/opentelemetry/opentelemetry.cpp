@@ -23,6 +23,15 @@
 #include <opentelemetry/sdk/trace/batch_span_processor.h>
 #include <opentelemetry/sdk/trace/tracer_provider.h>
 
+#if defined(AZURE_EVENTHUBS_ENABLE_METRICS)
+#include <opentelemetry/exporters/otlp/otlp_http_metric_exporter_factory.h>
+#include <opentelemetry/exporters/otlp/otlp_http_metric_exporter_options.h>
+#include <opentelemetry/metrics/provider.h>
+#include <opentelemetry/sdk/metrics/export/periodic_exporting_metric_reader_factory.h>
+#include <opentelemetry/sdk/metrics/meter_provider.h>
+#include <opentelemetry/sdk/metrics/push_metric_exporter.h>
+#endif
+
 namespace {
 namespace otel = opentelemetry;
 using AzureLogger = Azure::Core::Diagnostics::Logger;
@@ -44,10 +53,28 @@ otel::logs::Severity MapSeverity(AzureLogger::Level level)
   return otel::logs::Severity::kInfo;
 }
 
+// The local exporter check cannot acquire a token or contact an identity provider.
+class SmokeCredential final : public Azure::Core::Credentials::TokenCredential {
+public:
+  SmokeCredential() : TokenCredential("SmokeCredential") {}
+  Azure::Core::Credentials::AccessToken GetToken(
+      Azure::Core::Credentials::TokenRequestContext const&,
+      Azure::Core::Context const& context) const override
+  {
+    context.ThrowIfCancelled();
+    throw std::logic_error("The smoke send must use a cancelled context.");
+  }
+};
+
 class Telemetry final {
 private:
   std::shared_ptr<otel::sdk::trace::TracerProvider> m_traces;
   std::shared_ptr<otel::sdk::logs::LoggerProvider> m_logs;
+#if defined(AZURE_EVENTHUBS_ENABLE_METRICS)
+  std::shared_ptr<otel::sdk::metrics::MeterProvider> m_metrics;
+  otel::nostd::shared_ptr<otel::metrics::MeterProvider> m_previous
+      = otel::metrics::Provider::GetMeterProvider();
+#endif
   bool m_stopped = false;
 
 public:
@@ -73,6 +100,20 @@ public:
         std::move(logExporter), otel::sdk::logs::BatchLogRecordProcessorOptions{});
     m_logs = std::make_shared<otel::sdk::logs::LoggerProvider>(std::move(logProcessor), resource);
     auto logger = m_logs->GetLogger("azure-sdk", "eventhubs-opentelemetry-sample", "1.0.0");
+
+#if defined(AZURE_EVENTHUBS_ENABLE_METRICS)
+    otel::exporter::otlp::OtlpHttpMetricExporterOptions metricOptions;
+    metricOptions.content_type = otel::exporter::otlp::HttpRequestContentType::kBinary;
+    auto metricExporter
+        = otel::exporter::otlp::OtlpHttpMetricExporterFactory::Create(metricOptions);
+    auto reader = otel::sdk::metrics::PeriodicExportingMetricReaderFactory::Create(
+        std::move(metricExporter), {});
+    m_metrics = std::make_shared<otel::sdk::metrics::MeterProvider>(
+        std::make_unique<otel::sdk::metrics::ViewRegistry>(), resource);
+    m_metrics->AddMetricReader(std::move(reader));
+    otel::metrics::Provider::SetMeterProvider(
+        std::static_pointer_cast<otel::metrics::MeterProvider>(m_metrics));
+#endif
 
     // The listener is process-wide. Capture an owning pointer, never a local reference.
     // Batch processing queues records; this callback does not perform network export.
@@ -121,7 +162,14 @@ public:
     bool const logsFlushed = m_logs->ForceFlush(timeout);
     bool const tracesStopped = m_traces->Shutdown(timeout);
     bool const logsStopped = m_logs->Shutdown(timeout);
-    return tracesFlushed && logsFlushed && tracesStopped && logsStopped;
+    bool result = tracesFlushed && logsFlushed && tracesStopped && logsStopped;
+#if defined(AZURE_EVENTHUBS_ENABLE_METRICS)
+    otel::metrics::Provider::SetMeterProvider(m_previous);
+    bool const metricsFlushed = m_metrics->ForceFlush(timeout);
+    bool const metricsStopped = m_metrics->Shutdown(timeout);
+    result = result && metricsFlushed && metricsStopped;
+#endif
+    return result;
   }
 
   ~Telemetry() { Shutdown(); }
@@ -152,10 +200,18 @@ int main(int argc, char** argv)
     {
       Azure::Messaging::EventHubs::ProducerClientOptions options;
       options.TracingProvider = telemetry.AzureProvider();
-      // Constructing a credential/client does not authenticate or connect. --smoke never sends.
-      auto credential = std::make_shared<Azure::Identity::AzureCliCredential>();
+      // Constructing a credential/client does not authenticate or connect.
+      std::shared_ptr<Azure::Core::Credentials::TokenCredential> credential;
+      if (send)
+      {
+        credential = std::make_shared<Azure::Identity::AzureCliCredential>();
+      }
+      else
+      {
+        credential = std::make_shared<SmokeCredential>();
+      }
       Azure::Messaging::EventHubs::ProducerClient producer(
-          send ? RequiredEnvironment("EVENTHUBS_HOST") : "unused.invalid",
+          send ? RequiredEnvironment("EVENTHUBS_HOST") : "localhost",
           send ? RequiredEnvironment("EVENTHUB_NAME") : "sample-hub",
           credential,
           options);
@@ -169,6 +225,19 @@ int main(int argc, char** argv)
       else
       {
         telemetry.SmokeSpan();
+#if defined(AZURE_EVENTHUBS_ENABLE_METRICS)
+        // A pre-cancelled send exercises SDK metrics without contacting Event Hubs.
+        Azure::Core::Context cancelled;
+        cancelled.Cancel();
+        try
+        {
+          producer.Send(Azure::Messaging::EventHubs::Models::EventData{"smoke"}, cancelled);
+          throw std::runtime_error("Expected the pre-cancelled send to stop.");
+        }
+        catch (Azure::Core::OperationCancelledException const&)
+        {
+        }
+#endif
       }
       // The producer destructor emits a real Azure SDK close log, including in smoke mode.
     }
@@ -177,7 +246,7 @@ int main(int argc, char** argv)
       std::cerr << "Telemetry flush or shutdown did not complete successfully.\n";
       return 1;
     }
-    std::cout << "Finished. Check the collector for traces and logs.\n";
+    std::cout << "Finished. Check the collector for telemetry.\n";
     return 0;
   }
   catch (std::exception const& ex)
