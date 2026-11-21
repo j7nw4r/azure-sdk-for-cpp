@@ -4,6 +4,8 @@
 
 ### Features Added
 
+- Added opt-in OpenTelemetry counters for logical operations, events and AMQP lifecycle transitions, and a histogram for logical operation duration.
+
 - [[#7336]](https://github.com/Azure/azure-sdk-for-cpp/issues/7336) Added distributed tracing. `ProducerClientOptions` and `ConsumerClientOptions` gained a `TracingProvider` field. `ProducerClient::Send` and `PartitionClient::ReceiveEvents` create one span per call when a tracing provider is set. Child spans measure AMQP link attachment, send disposition, and blocking receive latency. AMQP lifecycle logs identify the client, partition, component, and component generation for failures and rebuilds.
 
 ### Breaking Changes

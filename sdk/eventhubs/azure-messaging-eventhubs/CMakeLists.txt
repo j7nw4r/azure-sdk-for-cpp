@@ -3,6 +3,10 @@
 
 # setting CMAKE_TOOLCHAIN_FILE must happen before creating the project
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake-modules")
+option(AZURE_EVENTHUBS_ENABLE_METRICS "Enable native OpenTelemetry metrics" OFF)
+if(AZURE_EVENTHUBS_ENABLE_METRICS AND CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+  list(APPEND VCPKG_MANIFEST_FEATURES metrics)
+endif()
 include(AzureVcpkg)
 az_vcpkg_integrate()
 
@@ -114,6 +118,13 @@ target_include_directories(
 )
 
 target_link_libraries(azure-messaging-eventhubs PUBLIC Azure::azure-core Azure::azure-core-amqp)
+
+if(AZURE_EVENTHUBS_ENABLE_METRICS)
+  find_package(opentelemetry-cpp CONFIG REQUIRED)
+  target_sources(azure-messaging-eventhubs PRIVATE src/eventhubs_metrics.cpp)
+  target_compile_definitions(azure-messaging-eventhubs PRIVATE AZURE_EVENTHUBS_ENABLE_METRICS)
+  target_link_libraries(azure-messaging-eventhubs PRIVATE opentelemetry-cpp::api)
+endif()
 
 target_compile_definitions(azure-messaging-eventhubs PRIVATE _azure_BUILDING_SDK)
 

@@ -3,10 +3,12 @@
   "version-string": "1.0.0",
   "dependencies": [
     "azure-core-cpp",
-    "azure-core-amqp-cpp",
-    {
-      "name": "opentelemetry-cpp",
-      "features": [ "otlp-http" ]
+    "azure-core-amqp-cpp"
+  ],
+  "features": {
+    "metrics": {
+      "description": "Record native OpenTelemetry metrics",
+      "dependencies": [ { "name": "opentelemetry-cpp", "default-features": false } ]
     }
-  ]
+  }
 }

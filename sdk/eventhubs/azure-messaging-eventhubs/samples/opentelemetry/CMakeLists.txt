@@ -17,4 +17,8 @@ target_link_libraries(eventhubs-opentelemetry PRIVATE
   Azure::azure-core-tracing-opentelemetry
   opentelemetry-cpp::otlp_http_exporter
   opentelemetry-cpp::otlp_http_log_record_exporter)
+if(AZURE_EVENTHUBS_ENABLE_METRICS)
+  target_compile_definitions(eventhubs-opentelemetry PRIVATE AZURE_EVENTHUBS_ENABLE_METRICS)
+  target_link_libraries(eventhubs-opentelemetry PRIVATE opentelemetry-cpp::otlp_http_metric_exporter)
+endif()
 CREATE_PER_SERVICE_TARGET_BUILD_FOR_SAMPLE(eventhubs eventhubs-opentelemetry DISABLE_RUN)

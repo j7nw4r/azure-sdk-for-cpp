@@ -31,9 +31,14 @@ if(EXISTS "${SOURCE_PATH}/sdk/eventhubs/azure-messaging-eventhubs")
   file(RENAME "${SOURCE_PATH}/sdk" "${SOURCE_PATH}/_")
 endif()
 
+vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+    FEATURES metrics AZURE_EVENTHUBS_ENABLE_METRICS
+)
+
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}/_/_/_"
     OPTIONS
+        ${FEATURE_OPTIONS}
         -DWARNINGS_AS_ERRORS=OFF
         -DBUILD_TESTING=OFF
 )

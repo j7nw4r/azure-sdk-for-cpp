@@ -14,6 +14,12 @@
   ],
   "homepage": "https://github.com/Azure/azure-sdk-for-cpp/tree/main/sdk/eventhubs/azure-messaging-eventhubs",
   "license": "MIT",
+  "features": {
+    "metrics": {
+      "description": "Record native OpenTelemetry metrics",
+      "dependencies": [ { "name": "opentelemetry-cpp", "default-features": false } ]
+    }
+  },
   "dependencies": [
     {
       "name": "azure-core-cpp",
