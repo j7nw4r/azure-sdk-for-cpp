@@ -146,6 +146,31 @@ namespace Azure { namespace Messaging { namespace EventHubs { namespace Test {
     EXPECT_EQ(Azure::Core::Tracing::_internal::SpanStatus::Error, span->GetStatuses().back());
   }
 
+  TEST(EventHubsTracingTest, CancelledSendSkipsBatchPreparation)
+  {
+    auto provider = std::make_shared<TestTracingProvider>();
+    ProducerClientOptions options;
+    options.TracingProvider = provider;
+    ProducerClient client{
+        "Endpoint=sb://localhost/;SharedAccessKeyName=name;SharedAccessKey=key",
+        TestEventHubName,
+        options};
+    Azure::Core::Context cancelled;
+    cancelled.Cancel();
+    Models::EventData event{"example"};
+
+    EXPECT_THROW(client.Send(event, cancelled), Azure::Core::OperationCancelledException);
+    EXPECT_THROW(
+        client.Send(std::vector<Models::EventData>{event}, cancelled),
+        Azure::Core::OperationCancelledException);
+    auto const& spans = provider->GetTracers().front()->GetSpans();
+    ASSERT_EQ(2u, spans.size());
+    for (auto const& span : spans)
+    {
+      EXPECT_EQ("ProducerClient.Send", span->GetName());
+    }
+  }
+
   TEST(EventHubsTracingTest, SendSpanRecordsNonCancelException)
   {
     auto provider = std::make_shared<TestTracingProvider>();

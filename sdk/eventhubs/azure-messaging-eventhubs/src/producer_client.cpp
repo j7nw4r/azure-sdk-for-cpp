@@ -406,6 +406,7 @@ namespace Azure { namespace Messaging { namespace EventHubs {
 
     try
     {
+      tracingContext.Context.ThrowIfCancelled();
       auto batch = CreateBatch(EventDataBatchOptions{}, tracingContext.Context);
       if (!batch.TryAdd(eventData))
       {
@@ -439,6 +440,7 @@ namespace Azure { namespace Messaging { namespace EventHubs {
 
     try
     {
+      tracingContext.Context.ThrowIfCancelled();
       auto batch = CreateBatch(EventDataBatchOptions{}, tracingContext.Context);
       for (const auto& data : eventData)
       {
