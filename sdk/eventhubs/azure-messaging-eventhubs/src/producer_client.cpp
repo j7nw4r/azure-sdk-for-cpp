@@ -857,17 +857,25 @@ namespace Azure { namespace Messaging { namespace EventHubs {
           [&sender, &context]() { sender->Close(context); },
           _detail::LogAmqpLifecycle);
     }
-#if ENABLE_RUST_AMQP
     if (session)
     {
       auto const diagnosticsContext = CreateDiagnosticsContext(
           m_clientIdentifier, partitionId, "session", partitionId, stackId);
+#if ENABLE_RUST_AMQP
       _detail::CloseAmqpComponent(
           diagnosticsContext,
           failureReason.HasValue(),
           detail,
           [&session, &context]() { session->End(context); },
           _detail::LogAmqpLifecycle);
+#else
+      // uAMQP releases this component by dropping the cached handle.
+      if (failureReason.HasValue())
+      {
+        _detail::LogAmqpLifecycle(
+            Logger::Level::Informational, diagnosticsContext, "discarded", detail);
+      }
+#endif
     }
     if (connection)
     {
@@ -878,14 +886,22 @@ namespace Azure { namespace Messaging { namespace EventHubs {
           CreateConnectionName(
               m_clientIdentifier, m_producerClientOptions.ApplicationID, partitionId, stackId),
           stackId);
+#if ENABLE_RUST_AMQP
       _detail::CloseAmqpComponent(
           diagnosticsContext,
           failureReason.HasValue(),
           detail,
           [&connection, &context]() { connection->Close(context); },
           _detail::LogAmqpLifecycle);
-    }
+#else
+      // uAMQP releases this component by dropping the cached handle.
+      if (failureReason.HasValue())
+      {
+        _detail::LogAmqpLifecycle(
+            Logger::Level::Informational, diagnosticsContext, "discarded", detail);
+      }
 #endif
+    }
 
     // The properties client shares the gateway connection, so it dies with that connection.
     if (partitionId.empty())

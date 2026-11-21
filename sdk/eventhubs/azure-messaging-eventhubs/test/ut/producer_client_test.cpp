@@ -73,8 +73,7 @@ namespace Azure { namespace Messaging { namespace EventHubs { namespace Test {
         {
           detached.set_value();
         }
-        if (message.find("event='discarded'") != std::string::npos
-            && message.find("component.name='detach-test'") != std::string::npos)
+        if (message.find("event='discarded'") != std::string::npos)
         {
           EXPECT_EQ(Logger::Level::Informational, level);
           std::lock_guard<std::mutex> lock(logMutex);
@@ -120,10 +119,16 @@ namespace Azure { namespace Messaging { namespace EventHubs { namespace Test {
       }
       Logger::SetListener(nullptr);
       GTEST_LOG_(INFO) << "Structured discard records after peer detach: " << discarded.size();
-      ASSERT_EQ(1u, discarded.size());
-      EXPECT_NE(std::string::npos, discarded[0].find("component.generation=1"));
-      EXPECT_NE(std::string::npos, discarded[0].find("partition.id='0'"));
-      EXPECT_NE(std::string::npos, discarded[0].find("detail='The peer detached the link.'"));
+      ASSERT_EQ(3u, discarded.size());
+      EXPECT_NE(std::string::npos, discarded[0].find("component.type='link'"));
+      EXPECT_NE(std::string::npos, discarded[1].find("component.type='session'"));
+      EXPECT_NE(std::string::npos, discarded[2].find("component.type='connection'"));
+      for (auto const& record : discarded)
+      {
+        EXPECT_NE(std::string::npos, record.find("component.generation=1"));
+        EXPECT_NE(std::string::npos, record.find("partition.id='0'"));
+        EXPECT_NE(std::string::npos, record.find("detail='The peer detached the link.'"));
+      }
     }
   } // namespace
 
