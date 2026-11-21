@@ -60,15 +60,20 @@ namespace Azure { namespace Messaging { namespace EventHubs { namespace Test {
     options.MaxBytes = 65536;
     auto batch = _detail::EventDataBatchFactory::CreateEventDataBatch(options);
     EXPECT_THROW(producer.Send(batch), std::runtime_error);
-    EXPECT_TRUE(batch.TryAdd(Models::EventData{"event"}));
     Azure::Core::Context cancelled;
     cancelled.Cancel();
+    // Batch conversion fails before cancellation is checked.
+    EXPECT_THROW(producer.Send(batch, cancelled), std::runtime_error);
+    EXPECT_TRUE(batch.TryAdd(Models::EventData{"event"}));
     EXPECT_THROW(producer.Send(batch, cancelled), Azure::Core::OperationCancelledException);
 
-    Azure::Core::Context context;
     {
-      _detail::OperationMetrics receive{"receive", hub, host, context};
+      _detail::OperationMetrics receive{"receive", hub, host};
       receive.Complete(3);
+    }
+    {
+      _detail::OperationMetrics receive{"receive", hub, host};
+      receive.Complete(2, true);
     }
     _detail::AmqpDiagnosticsContext component{"client-identity", "0", "link", "name", 42};
     _detail::LogAmqpLifecycle(
@@ -116,13 +121,16 @@ namespace Azure { namespace Messaging { namespace EventHubs { namespace Test {
       }
       return true;
     }));
-    EXPECT_EQ(1, observations["az.eventhubs.operations/send/error"]);
+    EXPECT_EQ(2, observations["az.eventhubs.operations/send/error"]);
     EXPECT_EQ(1, observations["az.eventhubs.operations/send/cancelled"]);
     EXPECT_EQ(1, observations["az.eventhubs.operations/receive/success"]);
-    EXPECT_EQ(1, observations["az.eventhubs.operation.duration/send/error"]);
+    EXPECT_EQ(2, observations["az.eventhubs.operation.duration/send/error"]);
     EXPECT_EQ(1, observations["az.eventhubs.operation.duration/send/cancelled"]);
     EXPECT_EQ(1, observations["az.eventhubs.operation.duration/receive/success"]);
     EXPECT_EQ(3, observations["az.eventhubs.events/receive/success"]);
+    EXPECT_EQ(1, observations["az.eventhubs.operations/receive/cancelled"]);
+    EXPECT_EQ(1, observations["az.eventhubs.operation.duration/receive/cancelled"]);
+    EXPECT_EQ(2, observations["az.eventhubs.events/receive/cancelled"]);
     EXPECT_EQ(0u, observations.count("az.eventhubs.events/send/error"));
     EXPECT_EQ(0u, observations.count("az.eventhubs.events/send/cancelled"));
     EXPECT_EQ(1, observations["az.eventhubs.amqp.lifecycle/link/success"]);

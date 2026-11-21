@@ -71,17 +71,12 @@ namespace Azure { namespace Messaging { namespace EventHubs { namespace _detail 
     {
       return;
     }
-    char const* outcome = m_succeeded ? "success" : "error";
-    if (m_cancelled || (!m_succeeded && m_context.IsCancelled()))
-    {
-      outcome = "cancelled";
-    }
     std::initializer_list<std::pair<otel::nostd::string_view, otel::common::AttributeValue>> labels{
         {"messaging.system", "eventhubs"},
         {"messaging.destination.name", otel::nostd::string_view{m_hub}},
         {"server.address", otel::nostd::string_view{m_host}},
         {"operation", m_operation},
-        {"outcome", outcome}};
+        {"outcome", m_outcome}};
     instruments->Operations->Add(1, labels);
     instruments->Duration->Record(elapsed.count(), labels, {});
     if (m_events != 0)

@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <azure/core/context.hpp>
-
 #include <chrono>
 #include <cstdint>
 #include <string>
@@ -17,37 +15,24 @@ namespace Azure { namespace Messaging { namespace EventHubs { namespace _detail 
     char const* m_operation;
     std::string const& m_hub;
     std::string const& m_host;
-    Azure::Core::Context const& m_context;
     std::chrono::steady_clock::time_point m_start{std::chrono::steady_clock::now()};
     std::uint64_t m_events{};
-    bool m_succeeded{false};
-    bool m_cancelled{false};
+    char const* m_outcome{"error"};
 
   public:
-    OperationMetrics(
-        char const* operation,
-        std::string const& hub,
-        std::string const& host,
-        Azure::Core::Context const& context)
-        : m_operation(operation), m_hub(hub), m_host(host), m_context(context)
+    OperationMetrics(char const* operation, std::string const& hub, std::string const& host)
+        : m_operation(operation), m_hub(hub), m_host(host)
     {
     }
     ~OperationMetrics();
     void Complete(std::uint64_t events, bool cancelled = false)
     {
-      m_succeeded = true;
       m_events = events;
-      m_cancelled = cancelled;
+      m_outcome = cancelled ? "cancelled" : "success";
     }
 #else
   public:
-    OperationMetrics(
-        char const*,
-        std::string const&,
-        std::string const&,
-        Azure::Core::Context const&)
-    {
-    }
+    OperationMetrics(char const*, std::string const&, std::string const&) {}
     void Complete(std::uint64_t, bool = false) {}
 #endif
     OperationMetrics(OperationMetrics const&) = delete;

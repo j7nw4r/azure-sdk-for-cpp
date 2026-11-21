@@ -367,7 +367,7 @@ namespace Azure { namespace Messaging { namespace EventHubs {
   void ProducerClient::Send(EventDataBatch const& eventDataBatch, Core::Context const& context)
   {
     auto const eventCount = eventDataBatch.NumberOfEvents();
-    _detail::OperationMetrics metrics{"send", m_eventHub, m_fullyQualifiedNamespace, context};
+    _detail::OperationMetrics metrics{"send", m_eventHub, m_fullyQualifiedNamespace};
     auto tracingContext = _detail::StartSpan(
         m_tracingFactory,
         "ProducerClient.Send",
@@ -383,6 +383,12 @@ namespace Azure { namespace Messaging { namespace EventHubs {
       SendBatchInSpan(eventDataBatch, tracingContext);
       metrics.Complete(eventCount);
     }
+    catch (Azure::Core::OperationCancelledException const& ex)
+    {
+      metrics.Complete(0, true);
+      tracingContext.Span.AddEvent(ex);
+      throw;
+    }
     catch (std::exception const& ex)
     {
       tracingContext.Span.AddEvent(ex);
@@ -393,7 +399,7 @@ namespace Azure { namespace Messaging { namespace EventHubs {
   void ProducerClient::Send(Models::EventData const& eventData, Core::Context const& context)
   {
     // The batch creation opens the AMQP link, so it must run inside the span.
-    _detail::OperationMetrics metrics{"send", m_eventHub, m_fullyQualifiedNamespace, context};
+    _detail::OperationMetrics metrics{"send", m_eventHub, m_fullyQualifiedNamespace};
     auto tracingContext = _detail::StartSpan(
         m_tracingFactory,
         "ProducerClient.Send",
@@ -415,6 +421,12 @@ namespace Azure { namespace Messaging { namespace EventHubs {
       SendBatchInSpan(batch, tracingContext);
       metrics.Complete(1);
     }
+    catch (Azure::Core::OperationCancelledException const& ex)
+    {
+      metrics.Complete(0, true);
+      tracingContext.Span.AddEvent(ex);
+      throw;
+    }
     catch (std::exception const& ex)
     {
       tracingContext.Span.AddEvent(ex);
@@ -427,7 +439,7 @@ namespace Azure { namespace Messaging { namespace EventHubs {
       Core::Context const& context)
   {
     // The batch creation opens the AMQP link, so it must run inside the span.
-    _detail::OperationMetrics metrics{"send", m_eventHub, m_fullyQualifiedNamespace, context};
+    _detail::OperationMetrics metrics{"send", m_eventHub, m_fullyQualifiedNamespace};
     auto tracingContext = _detail::StartSpan(
         m_tracingFactory,
         "ProducerClient.Send",
@@ -451,6 +463,12 @@ namespace Azure { namespace Messaging { namespace EventHubs {
       }
       SendBatchInSpan(batch, tracingContext);
       metrics.Complete(eventData.size());
+    }
+    catch (Azure::Core::OperationCancelledException const& ex)
+    {
+      metrics.Complete(0, true);
+      tracingContext.Span.AddEvent(ex);
+      throw;
     }
     catch (std::exception const& ex)
     {
